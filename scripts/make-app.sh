@@ -17,7 +17,8 @@ fi
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Blottle"
-[[ -x "$CLI" ]] && cp "$CLI" "$APP/Contents/MacOS/blottle"
+# APFS is case-insensitive by default: "blottle" would overwrite "Blottle" (the app binary).
+[[ -x "$CLI" ]] && cp "$CLI" "$APP/Contents/MacOS/blottle-cli"
 sed "s/__VERSION__/$VERSION/g" "$ROOT/Packaging/Info.plist" > "$APP/Contents/Info.plist"
 echo -n "APPL????" > "$APP/Contents/PkgInfo"
 
