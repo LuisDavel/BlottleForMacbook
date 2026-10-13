@@ -1,6 +1,7 @@
 import BlottleKit
 import SwiftUI
 
+@MainActor
 struct SteamSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss

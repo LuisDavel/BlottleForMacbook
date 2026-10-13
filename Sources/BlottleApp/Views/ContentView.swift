@@ -1,6 +1,7 @@
 import BlottleKit
 import SwiftUI
 
+@MainActor
 struct ContentView: View {
     @Environment(AppModel.self) private var model
 
@@ -83,6 +84,7 @@ struct ContentView: View {
     }
 }
 
+@MainActor
 struct BottleRow: View {
     let bottle: Bottle
 
@@ -100,6 +102,7 @@ struct BottleRow: View {
     }
 }
 
+@MainActor
 struct EmptyStateView: View {
     @Environment(AppModel.self) private var model
 
@@ -129,6 +132,7 @@ struct EmptyStateView: View {
     }
 }
 
+@MainActor
 struct BusyOverlay: View {
     let state: BusyState
 

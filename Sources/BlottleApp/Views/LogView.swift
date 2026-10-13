@@ -1,6 +1,7 @@
 import BlottleKit
 import SwiftUI
 
+@MainActor
 struct LogView: View {
     @Environment(\.dismiss) private var dismiss
     let bottle: Bottle

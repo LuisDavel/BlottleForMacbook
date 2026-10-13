@@ -1,6 +1,7 @@
 import BlottleKit
 import SwiftUI
 
+@MainActor
 struct CreateBottleSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss

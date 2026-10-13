@@ -1,6 +1,7 @@
 import BlottleKit
 import SwiftUI
 
+@MainActor
 struct SettingsView: View {
     var body: some View {
         TabView {
@@ -14,6 +15,7 @@ struct SettingsView: View {
     }
 }
 
+@MainActor
 struct EnginesSettingsView: View {
     @Environment(AppModel.self) private var model
 
@@ -102,6 +104,7 @@ struct EnginesSettingsView: View {
     }
 }
 
+@MainActor
 struct SystemSettingsView: View {
     private var checks: [(ok: Bool, text: String)] {
         var items: [(Bool, String)] = []
@@ -141,6 +144,7 @@ struct SystemSettingsView: View {
     }
 }
 
+@MainActor
 struct AboutView: View {
     var body: some View {
         VStack(spacing: 12) {

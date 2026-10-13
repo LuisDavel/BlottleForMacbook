@@ -1,6 +1,7 @@
 import BlottleKit
 import SwiftUI
 
+@MainActor
 struct WinetricksSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss

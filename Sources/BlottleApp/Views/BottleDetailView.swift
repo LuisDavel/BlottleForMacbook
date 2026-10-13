@@ -2,6 +2,7 @@ import BlottleKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+@MainActor
 struct BottleDetailView: View {
     @Environment(AppModel.self) private var model
     let bottle: Bottle
@@ -213,6 +214,7 @@ struct BottleDetailView: View {
     }
 }
 
+@MainActor
 struct ProgramRow: View {
     @Environment(AppModel.self) private var model
     let bottle: Bottle
@@ -271,6 +273,7 @@ struct ProgramRow: View {
     }
 }
 
+@MainActor
 struct ProgramEditorSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
