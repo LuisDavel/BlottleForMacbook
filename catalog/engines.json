@@ -1,0 +1,32 @@
+[
+  {
+    "id": "gcenx-wine-devel-11.18",
+    "name": "Wine Devel 11.18",
+    "version": "11.18",
+    "flavor": "wine-devel",
+    "url": "https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.18/wine-devel-11.18-osx64.tar.xz",
+    "archive": "tar.xz",
+    "status": "stable",
+    "notes": "Build oficial do WineHQ empacotado por Gcenx. Inclui wine-gecko e wine-mono. Usa Rosetta 2 em Apple Silicon. DirectX 10/11 via DXVK (MoltenVK) ou WineD3D."
+  },
+  {
+    "id": "gcenx-wine-staging-11.18",
+    "name": "Wine Staging 11.18",
+    "version": "11.18",
+    "flavor": "wine-staging",
+    "url": "https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.18/wine-staging-11.18-osx64.tar.xz",
+    "archive": "tar.xz",
+    "status": "stable",
+    "notes": "Wine Staging com patches experimentais. Melhor compatibilidade com alguns launchers."
+  },
+  {
+    "id": "whisky-wine-gptk",
+    "name": "WhiskyWine (GPTK)",
+    "version": "2.x",
+    "flavor": "whisky",
+    "url": "https://data.getwhisky.app/Wine/Libraries.tar.gz",
+    "archive": "tar.gz",
+    "status": "maybeOffline",
+    "notes": "Wine do Whisky, compilado a partir das fontes do Game Porting Toolkit. Suporta D3DMetal (DirectX 11/12) depois de instalar as bibliotecas da Apple. O Whisky foi descontinuado; o servidor pode sair do ar."
+  }
+]

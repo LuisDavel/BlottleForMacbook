@@ -1,0 +1,18 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+
+# Build output
+build/
+dist/
+*.dSYM
+
+# Go
+tools/steamwebhelper-wrapper/*.exe
+
+# macOS
+.DS_Store
