@@ -8,11 +8,13 @@ public final class BottleStore {
 
     public let directory: URL
     /// JSON array of absolute paths of bottles outside `directory`.
+    /// Defaults to `ExternalBottles.json` next to `directory` (i.e. `BlottlePaths.root`
+    /// for the default store), so a store pointed at a custom folder stays self-contained.
     public let registryFile: URL
 
     public init(directory: URL = BlottlePaths.bottles, registryFile: URL? = nil) {
         self.directory = directory
-        self.registryFile = registryFile ?? BlottlePaths.root.appendingPathComponent(Self.registryFileName)
+        self.registryFile = registryFile ?? directory.deletingLastPathComponent().appendingPathComponent(Self.registryFileName)
     }
 
     public func list() -> [Bottle] {
