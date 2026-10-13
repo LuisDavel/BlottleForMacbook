@@ -25,7 +25,8 @@ public struct Program: Identifiable, Hashable, Codable, Sendable {
     public var kind: Kind
     public var source: Source
 
-    public var id: String { path.lowercased() }
+    /// Case-insensitive, symlink-resolved path (so `/var/…` and `/private/var/…` are the same program).
+    public var id: String { url.resolvingSymlinksInPath().path.lowercased() }
     public var url: URL { URL(fileURLWithPath: path) }
 
     public init(
