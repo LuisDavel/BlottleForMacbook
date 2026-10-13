@@ -44,7 +44,11 @@ public struct SteamOptions: Sendable {
 public enum SteamInstaller {
     public static let installerURL = URL(string: "https://cdn.cloudflare.steamstatic.com/client/installer/SteamSetup.exe")!
 
+    /// CEF folders Steam may run `steamwebhelper.exe` from. Current clients use
+    /// `cef.win64`; `cef.win7x64` / `cef.win7` come from older clients and are
+    /// often left behind, so patching only them leaves the real helper untouched.
     public static let wrapperFileNames: [(cefDirectory: String, wrapper: String)] = [
+        ("bin/cef/cef.win64", "steamwebhelper-wrapper-x64.exe"),
         ("bin/cef/cef.win7x64", "steamwebhelper-wrapper-x64.exe"),
         ("bin/cef/cef.win7", "steamwebhelper-wrapper-x86.exe"),
     ]

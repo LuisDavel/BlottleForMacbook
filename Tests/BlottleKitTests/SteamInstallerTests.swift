@@ -43,6 +43,25 @@ final class SteamInstallerTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: helper), "WRAPPER")
     }
 
+    /// Current Steam clients (2025+) ship CEF in `bin/cef/cef.win64`; the legacy
+    /// `cef.win7x64` / `cef.win7` folders are leftovers that Steam no longer runs.
+    func testWrapperIsDeployedToCurrentCEFDirectory() throws {
+        let root = TestSupport.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let bottle = TestSupport.makeBottle(in: root)
+
+        let cef = SteamInstaller.steamDirectory(in: bottle).appendingPathComponent("bin/cef/cef.win64")
+        let helper = cef.appendingPathComponent("steamwebhelper.exe")
+        TestSupport.touch(helper, contents: Data("ORIGINAL".utf8))
+
+        let wrappers = root.appendingPathComponent("wrappers", isDirectory: true)
+        TestSupport.touch(wrappers.appendingPathComponent("steamwebhelper-wrapper-x64.exe"), contents: Data("WRAPPER".utf8))
+
+        XCTAssertTrue(try SteamInstaller.applyWebHelperWrapper(to: bottle, wrapperDirectory: wrappers))
+        XCTAssertEqual(try String(contentsOf: helper), "WRAPPER")
+        XCTAssertEqual(try String(contentsOf: cef.appendingPathComponent("steamwebhelper.orig.exe")), "ORIGINAL")
+    }
+
     func testWrapperWithoutCEFDirectoryIsNoop() throws {
         let root = TestSupport.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
