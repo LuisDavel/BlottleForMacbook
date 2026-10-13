@@ -10,8 +10,21 @@ struct CreateBottleSheet: View {
     @State private var engineID = ""
     @State private var windowsVersion: WindowsVersion = .win10
     @State private var gaming = true
+    @State private var location: URL?
 
     private var engine: WineEngine? { model.engines.first { $0.id == engineID } }
+
+    private var locationDescription: String {
+        guard let location else { return "Padrão (Application Support/Blottle/Bottles)" }
+        return location.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+    }
+
+    private var externalVolumeName: String? {
+        guard let location,
+              let values = try? location.resourceValues(forKeys: [.volumeIsInternalKey, .volumeNameKey]),
+              values.volumeIsInternal == false else { return nil }
+        return values.volumeName
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -29,6 +42,25 @@ struct CreateBottleSheet: View {
                     }
                 }
                 Toggle("Otimizar para jogos (MSync, D3DMetal quando disponível)", isOn: $gaming)
+                LabeledContent("Local") {
+                    HStack {
+                        Text(locationDescription)
+                            .lineLimit(1).truncationMode(.middle)
+                            .foregroundStyle(location == nil ? .secondary : .primary)
+                            .help((location ?? model.store.directory).path)
+                        Spacer()
+                        if location != nil {
+                            Button("Padrão") { location = nil }
+                        }
+                        Button("Escolher…") {
+                            if let url = model.chooseBottleLocationPanel() { location = url }
+                        }
+                    }
+                }
+                if let volume = externalVolumeName {
+                    Text("Os programas desta garrafa serão instalados no disco \"\(volume)\". Se ele for desconectado, a garrafa some da lista até voltar.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if let engine, gaming {
                     if engine.supportsD3DMetal, !engine.hasD3DMetal {
                         Text("Esta engine aceita D3DMetal, mas as bibliotecas da Apple ainda não foram instaladas (Ajustes › Engines).")
@@ -53,7 +85,7 @@ struct CreateBottleSheet: View {
                     guard let engine else { return }
                     var settings = gaming ? BottleSettings.gaming(engine: engine) : BottleSettings()
                     settings.windowsVersion = windowsVersion
-                    model.createBottle(name: name, engine: engine, settings: settings)
+                    model.createBottle(name: name, engine: engine, settings: settings, location: location)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)

@@ -1,21 +1,108 @@
 import Foundation
 
-/// Creates, lists, saves and deletes bottles under `BlottlePaths.bottles`.
+/// Creates, lists, saves and deletes bottles under `BlottlePaths.bottles`, plus
+/// bottles that live elsewhere (e.g. on an external SSD) and are tracked in a
+/// small registry file (`ExternalBottles.json`).
 public final class BottleStore {
-    public let directory: URL
+    public static let registryFileName = "ExternalBottles.json"
 
-    public init(directory: URL = BlottlePaths.bottles) {
+    public let directory: URL
+    /// JSON array of absolute paths of bottles outside `directory`.
+    public let registryFile: URL
+
+    public init(directory: URL = BlottlePaths.bottles, registryFile: URL? = nil) {
         self.directory = directory
+        self.registryFile = registryFile ?? BlottlePaths.root.appendingPathComponent(Self.registryFileName)
     }
 
     public func list() -> [Bottle] {
-        guard let entries = try? FileManager.default.contentsOfDirectory(
+        let entries = (try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]
-        ) else { return [] }
-        return entries.compactMap { try? load(at: $0) }
+        )) ?? []
+        var seen = Set<String>()
+        return (entries + externalLocations())
+            .compactMap { try? load(at: $0) }
+            .filter { seen.insert($0.url.standardizedFileURL.path).inserted }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    // MARK: - External locations
+
+    /// Registered bottle folders outside `directory`. Missing folders (disk unplugged)
+    /// stay registered and simply don't show up in `list()`.
+    public func externalLocations() -> [URL] {
+        guard let data = try? Data(contentsOf: registryFile),
+              let paths = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return paths.map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
+    private func writeExternalLocations(_ urls: [URL]) throws {
+        try FileManager.default.createDirectory(at: registryFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(urls.map(\.standardizedFileURL.path)).write(to: registryFile, options: .atomic)
+    }
+
+    public func register(external url: URL) throws {
+        var urls = externalLocations()
+        let path = url.standardizedFileURL.path
+        guard !urls.contains(where: { $0.standardizedFileURL.path == path }) else { return }
+        urls.append(url)
+        try writeExternalLocations(urls)
+    }
+
+    public func unregister(external url: URL) throws {
+        let path = url.standardizedFileURL.path
+        let urls = externalLocations().filter { $0.standardizedFileURL.path != path }
+        try writeExternalLocations(urls)
+    }
+
+    private func isInsideDefaultDirectory(_ url: URL) -> Bool {
+        url.standardizedFileURL.deletingLastPathComponent().path == directory.standardizedFileURL.path
+    }
+
+    /// Checks that `location` can hold a Wine prefix: it must exist and the volume must
+    /// support symbolic links (`dosdevices/c:` is a symlink). exFAT/FAT32 don't.
+    public static func validateLocation(_ location: URL) throws {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: location.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw BlottleError.fileNotFound(location.path)
+        }
+        let values = try location.resourceValues(forKeys: [.volumeSupportsSymbolicLinksKey, .volumeNameKey, .volumeLocalizedFormatDescriptionKey])
+        if values.volumeSupportsSymbolicLinks == false {
+            let volume = values.volumeName ?? location.path
+            let format = values.volumeLocalizedFormatDescription.map { " (\($0))" } ?? ""
+            throw BlottleError.notSupported("o volume \"\(volume)\"\(format) não suporta links simbólicos, que o Wine exige. Formate o disco como APFS (Utilitário de Disco) e tente de novo.")
+        }
+        guard FileManager.default.isWritableFile(atPath: location.path) else {
+            throw BlottleError.notSupported("sem permissão de escrita em \(location.path)")
+        }
+    }
+
+    /// Picks a free folder for a new bottle, inside `location` (validated) or the default
+    /// directory, and registers it when external. The folder itself is not created.
+    public func allocateFolder(name: String, location: URL?) throws -> URL {
+        let parent: URL
+        if let location, !isInsideDefaultDirectory(location.appendingPathComponent("x")) {
+            try Self.validateLocation(location)
+            parent = location
+        } else {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            parent = directory
+        }
+        var folderName = BlottleLog.sanitize(name)
+        var counter = 2
+        while FileManager.default.fileExists(atPath: parent.appendingPathComponent(folderName).path) {
+            folderName = BlottleLog.sanitize(name) + "-\(counter)"
+            counter += 1
+        }
+        let url = parent.appendingPathComponent(folderName, isDirectory: true)
+        if !isInsideDefaultDirectory(url) {
+            try register(external: url)
+        }
+        return url
     }
 
     public func load(at url: URL) throws -> Bottle {
@@ -57,10 +144,12 @@ public final class BottleStore {
     }
 
     /// Creates the folder + metadata and initialises the Wine prefix.
+    /// `location` is an optional parent folder (e.g. on an external disk); `nil` uses the default.
     public func create(
         name: String,
         engine: WineEngine,
         settings: BottleSettings = BottleSettings(),
+        location: URL? = nil,
         status: ((String) -> Void)? = nil
     ) async throws -> Bottle {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -68,14 +157,7 @@ public final class BottleStore {
         if bottle(named: trimmed) != nil {
             throw BlottleError.bottleAlreadyExists(trimmed)
         }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        var folderName = BlottleLog.sanitize(trimmed)
-        var counter = 2
-        while FileManager.default.fileExists(atPath: directory.appendingPathComponent(folderName).path) {
-            folderName = BlottleLog.sanitize(trimmed) + "-\(counter)"
-            counter += 1
-        }
-        let url = directory.appendingPathComponent(folderName, isDirectory: true)
+        let url = try allocateFolder(name: trimmed, location: location)
         var bottle = Bottle(name: trimmed, engineID: engine.id, settings: settings, url: url)
         try save(bottle)
 
@@ -87,6 +169,7 @@ public final class BottleStore {
             try await applySettings(&bottle, engine: engine)
         } catch {
             try? FileManager.default.removeItem(at: url)
+            try? unregister(external: url)
             throw error
         }
         try save(bottle)
@@ -107,5 +190,6 @@ public final class BottleStore {
             throw BlottleError.bottleNotFound(bottle.name)
         }
         try FileManager.default.removeItem(at: bottle.url)
+        try? unregister(external: bottle.url)
     }
 }

@@ -53,7 +53,8 @@ make test         # testes unitários
 1. **Ajustes › Engines**: clique em *Instalar* em "Wine Devel 11.18" (ou importe um Wine que você já tenha: CrossOver, Game Porting Toolkit, WhiskyWine, `Wine Devel.app`).
 2. **Nova garrafa** (⌘N): dê um nome, escolha a engine e deixe "Otimizar para jogos" ligado.
 3. **Executar arquivo…** (⌘O) ou arraste um `.exe`/`.msi` para a janela. Os programas instalados aparecem na lista (lidos do Menu Iniciar e de `Program Files`).
-4. **Instalar Steam**: botão na garrafa. Veja [docs/STEAM.md](docs/STEAM.md) para os detalhes e os contornos dos bugs conhecidos.
+4. **Garrafa em SSD externo**: em *Nova garrafa › Local › Escolher…* aponte uma pasta do disco externo (precisa ser APFS). Os programas dessa garrafa ficam lá; se o disco for desconectado, ela some da lista até voltar.
+5. **Instalar Steam**: botão na garrafa. Veja [docs/STEAM.md](docs/STEAM.md) para os detalhes e os contornos dos bugs conhecidos.
 
 ## Primeiro uso (CLI)
 
@@ -64,6 +65,7 @@ blottle engine detect                           # acha CrossOver/GPTK/Wine.app j
 blottle engine import "/Applications/CrossOver.app/Contents/SharedSupport/CrossOver"
 
 blottle bottle create Jogos --gaming            # cria a garrafa (wineboot + config)
+blottle bottle create Jogos --gaming --location /Volumes/SSD/Bottles   # mesma coisa, mas no SSD externo (APFS)
 blottle run Jogos ~/Downloads/instalador.exe    # roda qualquer .exe/.msi/.bat/.lnk
 blottle bottle programs Jogos                   # lista o que foi instalado
 blottle run Jogos "Demo Game"                   # roda pelo nome listado

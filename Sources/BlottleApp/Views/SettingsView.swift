@@ -136,6 +136,7 @@ struct SystemSettingsView: View {
             Divider()
             Text("Pastas").font(.headline)
             Text("Garrafas: \(BlottlePaths.bottles.path)").font(.caption).textSelection(.enabled)
+            Text("Garrafas em outros discos ficam registradas em \(BlottlePaths.root.appendingPathComponent(BottleStore.registryFileName).path)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             Text("Engines: \(BlottlePaths.engines.path)").font(.caption).textSelection(.enabled)
             Text("Logs: \(BlottlePaths.logs.path)").font(.caption).textSelection(.enabled)
             Spacer()

@@ -135,9 +135,9 @@ final class AppModel {
 
     // MARK: - Bottles
 
-    func createBottle(name: String, engine: WineEngine, settings: BottleSettings) {
+    func createBottle(name: String, engine: WineEngine, settings: BottleSettings, location: URL? = nil) {
         perform("Criando garrafa \(name)") { [self] in
-            let bottle = try await store.create(name: name, engine: engine, settings: settings) { status in
+            let bottle = try await store.create(name: name, engine: engine, settings: settings, location: location) { status in
                 Task { @MainActor in self.setProgress(nil, detail: status) }
             }
             selectedBottleID = bottle.id
@@ -327,6 +327,26 @@ final class AppModel {
         perform("Importando Wine de \(url.lastPathComponent)") { [self] in
             _ = try await engineManager.importEngine(from: url, flavor: flavor)
         }
+    }
+
+    /// Lets the user pick a parent folder for a new bottle (e.g. on an external SSD).
+    func chooseBottleLocationPanel() -> URL? {
+        let panel = NSOpenPanel()
+        panel.title = "Escolha a pasta onde a garrafa será criada"
+        panel.message = "A garrafa vira uma subpasta aqui. Discos externos precisam estar formatados como APFS."
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: "/Volumes")
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        do {
+            try BottleStore.validateLocation(url)
+        } catch {
+            alert = AlertInfo(title: "Pasta não suportada", message: error.localizedDescription)
+            return nil
+        }
+        return url
     }
 
     func importEnginePanel() {

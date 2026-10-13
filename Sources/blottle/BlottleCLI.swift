@@ -238,6 +238,9 @@ struct BottleCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Usa os padrões para jogos (MSync, D3DMetal quando disponível).")
         var gaming = false
 
+        @Option(name: .long, help: "Pasta onde a garrafa será criada (ex.: /Volumes/SSD/Bottles). Padrão: Application Support/Blottle/Bottles.", completion: .directory)
+        var location: String?
+
         func run() async throws {
             try BlottlePaths.ensureDirectories()
             let engine = try CLI.engine(self.engine)
@@ -246,7 +249,8 @@ struct BottleCommand: AsyncParsableCommand {
             }
             var settings = gaming ? BottleSettings.gaming(engine: engine) : BottleSettings()
             settings.windowsVersion = version
-            let bottle = try await CLI.store.create(name: name, engine: engine, settings: settings) {
+            let location = self.location.map { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath, isDirectory: true) }
+            let bottle = try await CLI.store.create(name: name, engine: engine, settings: settings, location: location) {
                 CLI.printProgress($0)
             }
             print("Garrafa criada: \(bottle.name) em \(bottle.url.path)")
