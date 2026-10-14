@@ -78,7 +78,7 @@ struct ContentView: View {
         }
         .overlay {
             if let busy = model.busy {
-                BusyOverlay(state: busy)
+                BusyOverlay(state: busy) { model.cancelBusy() }
             }
         }
     }
@@ -86,6 +86,7 @@ struct ContentView: View {
 
 @MainActor
 struct BottleRow: View {
+    @Environment(AppModel.self) private var model
     let bottle: Bottle
 
     var body: some View {
@@ -97,7 +98,7 @@ struct BottleRow: View {
                     .foregroundStyle(.secondary)
             }
         } icon: {
-            Image(systemName: SteamInstaller.isInstalled(in: bottle) ? "gamecontroller.fill" : "cylinder.fill")
+            Image(systemName: model.status(for: bottle).steamInstalled ? "gamecontroller.fill" : "cylinder.fill")
         }
     }
 }
@@ -135,6 +136,7 @@ struct EmptyStateView: View {
 @MainActor
 struct BusyOverlay: View {
     let state: BusyState
+    var onCancel: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -150,6 +152,11 @@ struct BusyOverlay: View {
                 Text(state.title).font(.headline)
                 if !state.detail.isEmpty {
                     Text(state.detail).font(.caption).foregroundStyle(.secondary)
+                }
+                if state.cancellable {
+                    Button("Cancelar") { onCancel() }
+                        .keyboardShortcut(.cancelAction)
+                        .padding(.top, 4)
                 }
             }
             .padding(28)

@@ -17,7 +17,8 @@ struct BottleDetailView: View {
 
     private var engine: WineEngine? { model.engine(for: bottle) }
     private var programs: [Program] { model.programs(for: bottle) }
-    private var steamInstalled: Bool { SteamInstaller.isInstalled(in: bottle) }
+    private var status: BottleStatus { model.status(for: bottle) }
+    private var steamInstalled: Bool { status.steamInstalled }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -67,7 +68,7 @@ struct BottleDetailView: View {
                     chip(bottle.settings.windowsVersion.displayName, systemImage: "pc")
                     chip(bottle.settings.graphics.displayName, systemImage: "cpu")
                     chip(bottle.settings.sync.displayName, systemImage: "arrow.triangle.2.circlepath")
-                    if DXVKInstaller.isInstalled(in: bottle) {
+                    if status.dxvkInstalled {
                         chip("DXVK instalado", systemImage: "checkmark.seal")
                     }
                 }
@@ -221,6 +222,8 @@ struct ProgramRow: View {
     let program: Program
     let onEdit: () -> Void
 
+    private var exists: Bool { model.programExists(program, in: bottle) }
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: program.kind == .steam ? "gamecontroller.fill" : "app.fill")
@@ -242,7 +245,7 @@ struct ProgramRow: View {
                 }
             }
             Spacer()
-            if !program.exists {
+            if !exists {
                 Text("arquivo ausente").font(.caption).foregroundStyle(.red)
             }
             Button {
@@ -251,13 +254,13 @@ struct ProgramRow: View {
                 Image(systemName: "play.fill")
             }
             .buttonStyle(.borderless)
-            .disabled(!program.exists)
+            .disabled(!exists)
             .help("Executar")
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-            if program.exists { model.launch(program, in: bottle) }
+            if exists { model.launch(program, in: bottle) }
         }
         .contextMenu {
             Button("Executar") { model.launch(program, in: bottle) }

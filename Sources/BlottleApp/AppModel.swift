@@ -8,6 +8,24 @@ struct BusyState {
     var title: String
     var detail: String = ""
     var progress: Double? = nil
+    var cancellable = false
+}
+
+/// Facts about a bottle that require disk access. Computed off the main thread
+/// and cached so SwiftUI `body` never touches the filesystem.
+struct BottleStatus: Equatable {
+    var steamInstalled = false
+    var dxvkInstalled = false
+    /// Program paths (lowercased) that no longer exist on disk.
+    var missingProgramPaths: Set<String> = []
+
+    nonisolated static func compute(for bottle: Bottle, programs: [Program]) -> BottleStatus {
+        BottleStatus(
+            steamInstalled: SteamInstaller.isInstalled(in: bottle),
+            dxvkInstalled: DXVKInstaller.isInstalled(in: bottle),
+            missingProgramPaths: Set(programs.filter { !$0.exists }.map { $0.path.lowercased() })
+        )
+    }
 }
 
 struct AlertInfo: Identifiable {
@@ -50,8 +68,10 @@ final class AppModel {
     var catalog: [CatalogEntry] = EngineCatalog.builtin
     var selectedBottleID: UUID?
     var programsByBottle: [UUID: [Program]] = [:]
+    var statusByBottle: [UUID: BottleStatus] = [:]
     var running: [RunningProgram] = []
     var busy: BusyState?
+    private var busyTask: Task<Void, Never>?
     var alert: AlertInfo?
     var showCreateBottle = false
 
@@ -77,6 +97,14 @@ final class AppModel {
         programsByBottle[bottle.id] ?? bottle.programs
     }
 
+    func status(for bottle: Bottle) -> BottleStatus {
+        statusByBottle[bottle.id] ?? BottleStatus()
+    }
+
+    func programExists(_ program: Program, in bottle: Bottle) -> Bool {
+        !status(for: bottle).missingProgramPaths.contains(program.path.lowercased())
+    }
+
     func runningPrograms(in bottle: Bottle) -> [RunningProgram] {
         running.filter { $0.bottleID == bottle.id && $0.process.isRunning }
     }
@@ -89,30 +117,59 @@ final class AppModel {
         if selectedBottleID == nil || !bottles.contains(where: { $0.id == selectedBottleID }) {
             selectedBottleID = bottles.first?.id
         }
+        refreshStatuses()
+    }
+
+    /// Recomputes the cached disk status of every bottle in the background.
+    func refreshStatuses() {
+        let snapshot = bottles.map { ($0, programs(for: $0)) }
+        Task.detached(priority: .utility) {
+            let statuses = snapshot.map { ($0.0.id, BottleStatus.compute(for: $0.0, programs: $0.1)) }
+            await MainActor.run {
+                for (id, status) in statuses where self.statusByBottle[id] != status {
+                    self.statusByBottle[id] = status
+                }
+            }
+        }
     }
 
     func refreshPrograms(for bottle: Bottle) async {
-        let programs = await Task.detached(priority: .utility) {
-            ProgramScanner.allPrograms(in: bottle)
+        let (programs, status) = await Task.detached(priority: .utility) {
+            let programs = ProgramScanner.allPrograms(in: bottle)
+            return (programs, BottleStatus.compute(for: bottle, programs: programs))
         }.value
         programsByBottle[bottle.id] = programs
+        statusByBottle[bottle.id] = status
     }
 
     // MARK: - Task plumbing
 
     func perform(_ title: String, detail: String = "", _ work: @escaping () async throws -> Void) {
-        Task { await performAsync(title, detail: detail, work) }
+        busyTask = Task { await performAsync(title, detail: detail, cancellable: true, work) }
     }
 
-    func performAsync(_ title: String, detail: String = "", _ work: @escaping () async throws -> Void) async {
-        busy = BusyState(title: title, detail: detail)
-        defer { busy = nil }
+    func performAsync(
+        _ title: String,
+        detail: String = "",
+        cancellable: Bool = false,
+        _ work: @escaping () async throws -> Void
+    ) async {
+        busy = BusyState(title: title, detail: detail, cancellable: cancellable)
+        defer { busy = nil; busyTask = nil }
         do {
             try await work()
+        } catch is CancellationError {
+            // User pressed "Cancelar": nothing to report.
         } catch {
             alert = AlertInfo(title: title, message: error.localizedDescription)
         }
         refresh()
+    }
+
+    /// Cancels the operation shown in the busy overlay (if it was started with `perform`).
+    func cancelBusy() {
+        busy?.detail = "Cancelando…"
+        busyTask?.cancel()
     }
 
     func setProgress(_ fraction: Double?, detail: String? = nil) {

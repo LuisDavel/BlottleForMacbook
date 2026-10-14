@@ -23,7 +23,7 @@ struct BottleConfigView: View {
     }
 
     private var engine: WineEngine? { model.engines.first { $0.id == engineID } }
-    private var dxvkInstalled: Bool { DXVKInstaller.isInstalled(in: bottle) }
+    private var dxvkInstalled: Bool { model.status(for: bottle).dxvkInstalled }
 
     var body: some View {
         VStack(spacing: 0) {
