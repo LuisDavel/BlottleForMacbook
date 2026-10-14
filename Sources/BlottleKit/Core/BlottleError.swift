@@ -12,6 +12,7 @@ public enum BlottleError: LocalizedError, Equatable {
     case notSupported(String)
     case parseError(String)
     case missingDependency(String)
+    case timedOut(command: String, seconds: TimeInterval)
 
     public var errorDescription: String? {
         switch self {
@@ -38,6 +39,8 @@ public enum BlottleError: LocalizedError, Equatable {
             return "Erro ao interpretar dados: \(reason)"
         case .missingDependency(let dep):
             return "Dependência ausente: \(dep)"
+        case .timedOut(let command, let seconds):
+            return "O comando `\(command)` não terminou em \(Int(seconds)) segundos e foi encerrado."
         }
     }
 }

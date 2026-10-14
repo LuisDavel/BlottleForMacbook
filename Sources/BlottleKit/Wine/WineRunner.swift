@@ -32,7 +32,8 @@ public struct WineRunner {
         _ arguments: [String],
         workingDirectory: URL? = nil,
         extraEnvironment: [String: String] = [:],
-        logName: String? = nil
+        logName: String? = nil,
+        timeout: TimeInterval? = nil
     ) async throws -> ProcessResult {
         let log = try logName.map { try BlottleLog.open(bottle: bottle.name, name: $0) }
         defer { try? log?.handle.close() }
@@ -41,7 +42,8 @@ public struct WineRunner {
             arguments: arguments,
             environment: environment(extra: extraEnvironment),
             currentDirectory: workingDirectory,
-            log: log?.handle
+            log: log?.handle,
+            timeout: timeout
         )
     }
 
@@ -50,13 +52,15 @@ public struct WineRunner {
         _ arguments: [String],
         workingDirectory: URL? = nil,
         extraEnvironment: [String: String] = [:],
-        logName: String? = nil
+        logName: String? = nil,
+        timeout: TimeInterval? = nil
     ) async throws -> ProcessResult {
         let result = try await run(
             arguments,
             workingDirectory: workingDirectory,
             extraEnvironment: extraEnvironment,
-            logName: logName
+            logName: logName,
+            timeout: timeout
         )
         guard result.succeeded else {
             throw BlottleError.processFailed(
@@ -69,9 +73,23 @@ public struct WineRunner {
     }
 
     @discardableResult
-    public func wineserver(_ arguments: [String]) async throws -> ProcessResult {
-        try await ProcessRunner.run(engine.wineserverBinary, arguments: arguments, environment: environment())
+    public func wineserver(_ arguments: [String], timeout: TimeInterval? = nil) async throws -> ProcessResult {
+        try await ProcessRunner.run(
+            engine.wineserverBinary,
+            arguments: arguments,
+            environment: environment(),
+            timeout: timeout
+        )
     }
+
+    // MARK: - Timeouts
+
+    /// `wineboot --init/--update` can legitimately take a few minutes (Mono/Gecko prompts, slow disks).
+    public static let winebootTimeout: TimeInterval = 10 * 60
+    /// `wineserver -w` waits for every process in the prefix to exit.
+    public static let wineserverWaitTimeout: TimeInterval = 5 * 60
+    /// `wineserver -k` should return almost immediately.
+    public static let wineserverKillTimeout: TimeInterval = 30
 
     // MARK: - Background programs
 
@@ -105,23 +123,23 @@ public struct WineRunner {
     /// `wineboot --init` creates `drive_c`, the registry and the fake Windows tree.
     public func initializePrefix() async throws {
         try FileManager.default.createDirectory(at: bottle.url, withIntermediateDirectories: true)
-        try await check(["wineboot", "--init"], logName: "wineboot")
+        try await check(["wineboot", "--init"], logName: "wineboot", timeout: Self.winebootTimeout)
         try await waitForWineserver()
     }
 
     /// Re-runs the prefix update (useful after switching engines).
     public func updatePrefix() async throws {
-        try await check(["wineboot", "--update"], logName: "wineboot")
+        try await check(["wineboot", "--update"], logName: "wineboot", timeout: Self.winebootTimeout)
         try await waitForWineserver()
     }
 
     public func waitForWineserver() async throws {
-        _ = try await wineserver(["-w"])
+        _ = try await wineserver(["-w"], timeout: Self.wineserverWaitTimeout)
     }
 
     /// Kills every process in the bottle.
     public func shutdown() async throws {
-        _ = try await wineserver(["-k"])
+        _ = try await wineserver(["-k"], timeout: Self.wineserverKillTimeout)
     }
 
     // MARK: - Standard tools
