@@ -38,6 +38,92 @@ final class OutputCollector: @unchecked Sendable {
     }
 }
 
+/// Coordinates the single resumption of `ProcessRunner.run` between normal
+/// exit, timeout and task cancellation.
+private final class RunState: @unchecked Sendable {
+    private let lock = NSLock()
+    private let process: Process
+    private let reader: FileHandle
+    private var continuation: CheckedContinuation<ProcessResult, Error>?
+    private var started = false
+    private var done = false
+    private var pendingError: Error?
+
+    init(process: Process, reader: FileHandle) {
+        self.process = process
+        self.reader = reader
+    }
+
+    /// Launches the process unless the run was already cancelled.
+    func start(_ continuation: CheckedContinuation<ProcessResult, Error>) {
+        lock.lock()
+        if let pendingError {
+            done = true
+            lock.unlock()
+            reader.readabilityHandler = nil
+            continuation.resume(throwing: pendingError)
+            return
+        }
+        self.continuation = continuation
+        do {
+            try process.run()
+            started = true
+            lock.unlock()
+        } catch {
+            done = true
+            self.continuation = nil
+            lock.unlock()
+            reader.readabilityHandler = nil
+            continuation.resume(throwing: error)
+        }
+    }
+
+    /// Resumes with `result` if nothing else did first.
+    func finish(_ result: Result<ProcessResult, Error>) {
+        lock.lock()
+        guard !done, let continuation else {
+            lock.unlock()
+            return
+        }
+        done = true
+        self.continuation = nil
+        lock.unlock()
+        reader.readabilityHandler = nil
+        continuation.resume(with: result)
+    }
+
+    /// Terminates the process and resumes right away with `error`, without
+    /// waiting for the process to actually die (it may be stuck on I/O).
+    func stop(with error: Error) {
+        lock.lock()
+        guard !done else {
+            lock.unlock()
+            return
+        }
+        guard started else {
+            // Not launched yet: `start` will see this and bail out.
+            pendingError = error
+            lock.unlock()
+            return
+        }
+        lock.unlock()
+        Self.terminate(process)
+        finish(.failure(error))
+    }
+
+    /// SIGTERM, then SIGKILL after 2s if the process is still alive.
+    static func terminate(_ process: Process) {
+        guard process.isRunning else { return }
+        process.terminate()
+        let pid = process.processIdentifier
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+            if process.isRunning {
+                kill(pid, SIGKILL)
+            }
+        }
+    }
+}
+
 /// Small wrapper over `Foundation.Process`.
 ///
 /// Wine spawns a `wineserver` daemon that inherits our pipes and may keep them
@@ -45,12 +131,20 @@ final class OutputCollector: @unchecked Sendable {
 /// end-of-file: it resolves as soon as the process terminates.
 public enum ProcessRunner {
     /// Runs a command and waits for it to exit, capturing stdout+stderr.
+    ///
+    /// - Parameter timeout: when set, the process is terminated (SIGTERM, then
+    ///   SIGKILL after 2s) once it runs longer than this and
+    ///   `BlottleError.timedOut` is thrown.
+    ///
+    /// Cancelling the calling task terminates the process the same way and
+    /// throws `CancellationError`.
     public static func run(
         _ executable: URL,
         arguments: [String] = [],
         environment: [String: String]? = nil,
         currentDirectory: URL? = nil,
-        log: FileHandle? = nil
+        log: FileHandle? = nil,
+        timeout: TimeInterval? = nil
     ) async throws -> ProcessResult {
         let process = Process()
         process.executableURL = executable
@@ -78,25 +172,31 @@ public enum ProcessRunner {
             collector.append(data)
         }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            process.terminationHandler = { finished in
-                // Give the reader a moment to drain what is already buffered,
-                // then stop listening: a lingering wineserver may hold the
-                // write end open indefinitely.
-                DispatchQueue.global().asyncAfter(deadline: .now() + 0.25) {
-                    reader.readabilityHandler = nil
-                    continuation.resume(returning: ProcessResult(
-                        exitCode: finished.terminationStatus,
-                        output: collector.string
-                    ))
+        let command = ([executable.lastPathComponent] + arguments).joined(separator: " ")
+        let run = RunState(process: process, reader: reader)
+
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ProcessResult, Error>) in
+                process.terminationHandler = { finished in
+                    // Give the reader a moment to drain what is already buffered,
+                    // then stop listening: a lingering wineserver may hold the
+                    // write end open indefinitely.
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 0.25) {
+                        run.finish(.success(ProcessResult(
+                            exitCode: finished.terminationStatus,
+                            output: collector.string
+                        )))
+                    }
+                }
+                run.start(continuation)
+                if let timeout {
+                    DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+                        run.stop(with: BlottleError.timedOut(command: command, seconds: timeout))
+                    }
                 }
             }
-            do {
-                try process.run()
-            } catch {
-                reader.readabilityHandler = nil
-                continuation.resume(throwing: error)
-            }
+        } onCancel: {
+            run.stop(with: CancellationError())
         }
     }
 
@@ -107,14 +207,16 @@ public enum ProcessRunner {
         arguments: [String] = [],
         environment: [String: String]? = nil,
         currentDirectory: URL? = nil,
-        log: FileHandle? = nil
+        log: FileHandle? = nil,
+        timeout: TimeInterval? = nil
     ) async throws -> ProcessResult {
         let result = try await run(
             executable,
             arguments: arguments,
             environment: environment,
             currentDirectory: currentDirectory,
-            log: log
+            log: log,
+            timeout: timeout
         )
         guard result.succeeded else {
             let command = ([executable.lastPathComponent] + arguments).joined(separator: " ")
